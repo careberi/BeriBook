@@ -4,6 +4,7 @@
 import { DB } from './db.js';
 import { ingestFile } from './ingest.js';
 import { Reader, loadVoices } from './tts.js';
+import { buildPdfView } from './docview.js';
 import * as AI from './ai.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -96,6 +97,9 @@ async function handleFiles(fileList) {
       });
       $('#import-bar').style.width = '100%';
       await DB.saveBook(book);
+      if (book.hasOriginal) {
+        try { await DB.saveFile(book.id, file); } catch (_) { book.hasOriginal = false; await DB.saveBook(book); }
+      }
       await renderLibrary();
       toast(`Added “${book.title}” — ${book.chapters.length} chapters`);
       overlay.hidden = true;
@@ -109,21 +113,118 @@ async function handleFiles(fileList) {
 }
 
 // ------------------------------------------------------------------ reader
+let viewMode = 'text';       // 'text' (chapters) or 'document' (real PDF)
+let docView = null;          // built PDF view in document mode
+let activeDocEls = [];
+
 async function openBook(id) {
   const book = await DB.getBook(id);
   if (!book) return;
   currentBook = book;
-
   $('#reader-title').textContent = book.title;
-  reader.load(book.chapters, book.progress);
   applyVoiceSettings();
+
+  const preferred = localStorage.getItem('viewMode') || 'document';
+  viewMode = book.hasOriginal ? preferred : 'text';
+
+  showView('view-reader');
+  window.scrollTo(0, 0);
+  if (viewMode === 'document') await enterDocMode(book);
+  else enterTextMode(book);
+  updateViewToggle();
+}
+
+function setChapterControls(visible) {
+  ['#btn-chapters', '#btn-prev-ch', '#btn-next-ch'].forEach((s) => { $(s).hidden = !visible; });
+}
+
+function enterTextMode(book) {
+  if (docView) { docView.destroy(); docView = null; }
+  $('#doc-area').hidden = true;
+  $('#reading-area').hidden = false;
+  reader.load(book.chapters, book.progress);
   buildChapterList();
   renderChapter(reader.chapterIndex);
   highlightSentence(reader.sentenceIndex);
   updateChapterMeta();
   updatePlayButton('stopped');
-  showView('view-reader');
-  window.scrollTo(0, 0);
+  setChapterControls(true);
+}
+
+async function enterDocMode(book) {
+  const blob = await DB.getFile(book.id);
+  if (!blob) {
+    toast('Original file not saved for this document — showing text view.');
+    viewMode = 'text';
+    enterTextMode(book);
+    return;
+  }
+  $('#reading-area').hidden = true;
+  const area = $('#doc-area');
+  area.hidden = false;
+  area.innerHTML = '<div class="doc-loading">Rendering the document…</div>';
+  setChapterControls(false);
+  try {
+    const buf = await blob.arrayBuffer();
+    docView = await buildPdfView(area, buf, (si) => { reader.seek(0, si); reader.play(); });
+  } catch (err) {
+    console.error(err);
+    toast('Could not render the original — showing text view.');
+    viewMode = 'text';
+    enterTextMode(book);
+    return;
+  }
+  const startAt = Math.min(book.docProgress || 0, Math.max(0, docView.sentences.length - 1));
+  reader.load([{ title: book.title, text: docView.fullText, sentences: docView.sentences }],
+    { chapterIndex: 0, sentenceIndex: startAt });
+  $('#reader-sub').textContent = `Original document · ${docView.sentences.length} sentences`;
+  $('#scrubber').max = Math.max(1, docView.sentences.length - 1);
+  $('#scrubber').value = startAt;
+  highlightDocSentence(startAt, false);
+  updatePlayButton('stopped');
+}
+
+function highlightDocSentence(i, scroll = true) {
+  if (!docView) return;
+  activeDocEls.forEach((el) => el.classList.remove('hl'));
+  activeDocEls = docView.sentenceEls[i] || [];
+  activeDocEls.forEach((el) => el.classList.add('hl'));
+  if (scroll && activeDocEls[0]) {
+    const r = activeDocEls[0].getBoundingClientRect();
+    if (r.top < 90 || r.bottom > window.innerHeight - 150) {
+      activeDocEls[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+}
+
+function updateViewToggle() {
+  const btn = $('#btn-view');
+  btn.hidden = !currentBook || !currentBook.hasOriginal;
+  btn.textContent = viewMode === 'document' ? '📃' : '📄';
+  btn.setAttribute('aria-label', viewMode === 'document' ? 'Show text view' : 'Show original document');
+  btn.title = btn.getAttribute('aria-label');
+}
+
+async function toggleView() {
+  if (!currentBook || !currentBook.hasOriginal) return;
+  reader.stop();
+  aiReader.stop();
+  viewMode = viewMode === 'document' ? 'text' : 'document';
+  localStorage.setItem('viewMode', viewMode);
+  if (viewMode === 'document') await enterDocMode(currentBook);
+  else enterTextMode(currentBook);
+  updateViewToggle();
+}
+
+let docSaveTimer = null;
+function saveDocProgressSoon() {
+  clearTimeout(docSaveTimer);
+  docSaveTimer = setTimeout(() => {
+    if (currentBook) {
+      currentBook.docProgress = reader.sentenceIndex;
+      DB.saveDocProgress(currentBook.id, reader.sentenceIndex);
+    }
+  }, 600);
 }
 
 function buildChapterList() {
@@ -232,17 +333,31 @@ function saveProgressSoon() {
 
 // ---- reader engine callbacks ----
 reader.onChapterChange = (ci) => {
-  if (!currentBook) return;
+  if (!currentBook || viewMode === 'document') return;
   renderChapter(ci);
 };
 reader.onSentenceChange = (ci, si) => {
+  if (viewMode === 'document') {
+    highlightDocSentence(si);
+    $('#scrubber').value = si;
+    saveDocProgressSoon();
+    return;
+  }
   highlightSentence(si);
   $('#scrubber').value = si;
   saveProgressSoon();
 };
-reader.onWord = (charIndex, charLength) => highlightWord(charIndex, charLength);
+reader.onWord = (charIndex, charLength) => {
+  if (viewMode === 'document') return; // sentence-level highlight over the real page
+  highlightWord(charIndex, charLength);
+};
 reader.onStateChange = (state) => updatePlayButton(state);
 reader.onEnd = () => toast('Finished reading.');
+reader.onError = () => {
+  updatePlayButton('stopped');
+  toast('Your device couldn’t play this voice. Pick a different voice in Settings ⚙︎.');
+};
+aiReader.onError = () => toast('Couldn’t read that aloud — try a different voice in Settings.');
 
 // ------------------------------------------------------------- chapter drawer
 function openChapters() {
@@ -529,10 +644,13 @@ function wireEvents() {
   // reader nav
   $('#btn-back').addEventListener('click', () => {
     reader.stop();
-    saveProgressSoon();
+    aiReader.stop();
+    if (viewMode === 'document') saveDocProgressSoon(); else saveProgressSoon();
+    if (docView) { docView.destroy(); docView = null; }
     renderLibrary();
     showView('view-library');
   });
+  $('#btn-view').addEventListener('click', toggleView);
   $('#btn-chapters').addEventListener('click', openChapters);
   $('#btn-close-chapters').addEventListener('click', closeChapters);
   $('#drawer-scrim').addEventListener('click', closeChapters);
@@ -584,7 +702,10 @@ function wireEvents() {
 
   // keep progress on the way out
   window.addEventListener('pagehide', () => {
-    if (currentBook) {
+    if (!currentBook) return;
+    if (viewMode === 'document') {
+      DB.saveDocProgress(currentBook.id, reader.sentenceIndex);
+    } else {
       DB.saveProgress(currentBook.id, {
         chapterIndex: reader.chapterIndex, sentenceIndex: reader.sentenceIndex,
       });

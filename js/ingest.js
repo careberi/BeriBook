@@ -325,6 +325,8 @@ export async function ingestFile(file, onProgress) {
     createdAt: Date.now(),
     chapters,
     wordCount: words,
+    hasOriginal: type === 'pdf', // the real file can be rendered in "Original" view
     progress: { chapterIndex: 0, sentenceIndex: 0 },
+    docProgress: 0,
   };
 }

@@ -4,7 +4,7 @@
 // device; nothing is uploaded anywhere.
 
 const DB_NAME = 'beribook';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let _dbPromise = null;
 
@@ -20,6 +20,11 @@ function openDB() {
       }
       if (!db.objectStoreNames.contains('settings')) {
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+      // Original file bytes, kept in a separate store so the library list
+      // stays light (it never loads the raw files).
+      if (!db.objectStoreNames.contains('files')) {
+        db.createObjectStore('files', { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -60,6 +65,22 @@ export const DB = {
 
   async deleteBook(id) {
     const store = await tx('books', 'readwrite');
+    await reqPromise(store.delete(id));
+    try { await this.deleteFile(id); } catch (_) { /* ignore */ }
+  },
+
+  // Original file bytes (for the "Original document" view).
+  async saveFile(id, blob) {
+    const store = await tx('files', 'readwrite');
+    return reqPromise(store.put({ id, blob }));
+  },
+  async getFile(id) {
+    const store = await tx('files');
+    const row = await reqPromise(store.get(id));
+    return row ? row.blob : null;
+  },
+  async deleteFile(id) {
+    const store = await tx('files', 'readwrite');
     return reqPromise(store.delete(id));
   },
 
@@ -68,6 +89,13 @@ export const DB = {
     const book = await this.getBook(id);
     if (!book) return;
     book.progress = progress;
+    book.lastOpenedAt = Date.now();
+    await this.saveBook(book);
+  },
+  async saveDocProgress(id, sentenceIndex) {
+    const book = await this.getBook(id);
+    if (!book) return;
+    book.docProgress = sentenceIndex;
     book.lastOpenedAt = Date.now();
     await this.saveBook(book);
   },

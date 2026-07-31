@@ -193,6 +193,39 @@ mark.word {
   -webkit-box-decoration-break: clone;
 }
 
+/* ---------- original document (PDF) view ---------- */
+.doc-area {
+  padding: 16px 0 40px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+}
+.doc-loading { color: var(--text-dim); padding: 40px; }
+.pdf-page {
+  position: relative;
+  background: #fff;
+  box-shadow: 0 4px 18px rgba(0,0,0,.25);
+  border-radius: 4px;
+  overflow: hidden;
+  max-width: 100%;
+}
+.pdf-canvas { display: block; }
+.pdf-text {
+  position: absolute; inset: 0;
+  line-height: 1;
+}
+.pdf-text span {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  transform-origin: 0 0;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background .1s;
+}
+.pdf-text span.hl {
+  background: var(--highlight);
+  mix-blend-mode: multiply; /* tints the white page under the words */
+}
+
 /* ---------- chapter drawer ---------- */
 .drawer {
   position: fixed; top: 0; right: 0; z-index: 60;

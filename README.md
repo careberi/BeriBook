@@ -28,6 +28,11 @@ per-word fees, and it works offline once installed.
 - 📲 **Installs to your home screen** as a full-screen app (PWA) and works
   **offline**
 - 🌗 Light / dark themes
+- 📄 **Two ways to read.** *Original document* view renders the real PDF —
+  layout, tables, and formatting fully intact — and moves the reading highlight
+  over the actual words on the page. *Text* view reflows the document into clean,
+  chapter-by-chapter reading. Toggle with the 📄 / 📃 button; PDFs open in
+  Original view by default.
 - ✨ **AI assistant (optional)** — summarize a chapter, pull out key points, or
   ask questions about the document, powered by Claude. Answers can be read aloud
   too. Uses **your own** Claude API key, stored only on your device.
@@ -59,9 +64,21 @@ offline features to work. The easiest free way is **GitHub Pages**:
 
 ### 3. Use it
 - Tap **Choose file**, pick a PDF or `.docx`.
-- It's split into chapters — press **►** to start listening.
+- Press **►** to start listening.
+- **Original document** view (the default for PDFs) shows the real page with the
+  highlight moving over the words. Tap **📃** in the top bar to switch to
+  **Text** view (reflowed, chapter-by-chapter), and **📄** to switch back.
+- Tap any word/sentence to start reading from there.
 - Open **Settings (⚙︎)** to change voice, speed, and theme.
-- Tap a chapter (**☰**) to jump; tap any sentence to start reading from there.
+
+> **Note on the two views.** Text view splits the document into chapters and
+> reads clean sentence-by-sentence — best for books and prose. Original view
+> keeps the exact layout (tables, columns, headings); because it reads the page
+> as printed, dense pages full of tables or lists are read more coarsely than
+> flowing prose. Use whichever fits the document.
+>
+> Original view is available for PDFs added *after* this feature — re-add an
+> older PDF to enable it.
 
 ---
 
@@ -118,9 +135,10 @@ python3 -m http.server 8080
 | `index.html` | App shell (library, reader, player, settings) |
 | `css/styles.css` | Mobile-first styling, light/dark themes, safe-area insets |
 | `js/ingest.js` | PDF/DOCX parsing + chapter detection |
-| `js/tts.js` | Speech engine (sentence chunking, transport, highlighting) |
+| `js/tts.js` | Speech engine (sentence chunking, transport, highlighting, failure guard) |
+| `js/docview.js` | "Original document" view — renders the real PDF and maps reading onto a glyph-aligned text layer |
 | `js/ai.js` | Optional Claude integration (summaries, key points, Q&A) — streams from the browser with your own key |
-| `js/db.js` | IndexedDB library + progress + settings |
+| `js/db.js` | IndexedDB library + original file bytes + progress + settings |
 | `js/app.js` | UI controller wiring it all together |
 | `sw.js` | Service worker — offline caching of the app shell |
 | `manifest.webmanifest` | PWA metadata + icons |

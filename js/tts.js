@@ -8,38 +8,56 @@
 
 const synth = window.speechSynthesis;
 
-// Sentence segmentation: prefer the platform Intl.Segmenter (accurate, and
-// available in Safari 16.4+), fall back to a punctuation regex.
-function splitSentences(text) {
-  const clean = (text || '').replace(/\s+/g, ' ').trim();
-  if (!clean) return [];
+// Sentence segmentation returning character offsets into the (already
+// whitespace-normalized) input. Prefer the platform Intl.Segmenter (accurate,
+// Safari 16.4+); fall back to a punctuation regex. The "Original document"
+// view relies on these offsets to line reading up with the words on the page.
+export function splitSentencesWithOffsets(text) {
+  const clean = text || '';
+  if (!clean.trim()) return [];
+  let raw = [];
   if (typeof Intl !== 'undefined' && Intl.Segmenter) {
     try {
       const seg = new Intl.Segmenter(undefined, { granularity: 'sentence' });
-      const out = [];
-      for (const { segment } of seg.segment(clean)) {
-        const s = segment.trim();
-        if (s) out.push(s);
-      }
-      if (out.length) return mergeTiny(out);
-    } catch (_) { /* fall through */ }
+      for (const s of seg.segment(clean)) raw.push({ start: s.index, end: s.index + s.segment.length });
+    } catch (_) { raw = []; }
   }
-  const parts = clean.match(/[^.!?]+[.!?]+(?:["')\]]+)?|\S[^.!?]*$/g) || [clean];
-  return mergeTiny(parts.map((s) => s.trim()).filter(Boolean));
+  if (!raw.length) {
+    const re = /[^.!?]+[.!?]+(?:["')\]]+)?|\S[^.!?]*$/g;
+    let m;
+    while ((m = re.exec(clean)) !== null) raw.push({ start: m.index, end: m.index + m[0].length });
+    if (!raw.length) raw.push({ start: 0, end: clean.length });
+  }
+  // trim whitespace off each range, drop empties
+  const trimmed = [];
+  for (const r of raw) {
+    let s = r.start, e = r.end;
+    while (s < e && /\s/.test(clean[s])) s++;
+    while (e > s && /\s/.test(clean[e - 1])) e--;
+    if (e > s) trimmed.push({ start: s, end: e, text: clean.slice(s, e) });
+  }
+  return mergeTinyOffsets(trimmed);
 }
 
 // Merge very short fragments (headings, "1.", "e.g.") into the next sentence
-// so playback doesn't stutter.
-function mergeTiny(sentences) {
+// so playback doesn't stutter — keeping the merged character range.
+function mergeTinyOffsets(items) {
   const out = [];
-  for (const s of sentences) {
-    if (out.length && (s.length < 3 || out[out.length - 1].length < 3)) {
-      out[out.length - 1] = (out[out.length - 1] + ' ' + s).trim();
+  for (const it of items) {
+    const prev = out[out.length - 1];
+    if (prev && (it.text.length < 3 || prev.text.length < 3)) {
+      prev.end = it.end;
+      prev.text = (prev.text + ' ' + it.text).trim();
     } else {
-      out.push(s);
+      out.push({ ...it });
     }
   }
   return out;
+}
+
+function splitSentences(text) {
+  const clean = (text || '').replace(/\s+/g, ' ').trim();
+  return splitSentencesWithOffsets(clean).map((s) => s.text);
 }
 
 export class Reader {
@@ -57,13 +75,15 @@ export class Reader {
     this.paused = false;
 
     this._token = 0; // guards against stale utterance callbacks
+    this._errorStreak = 0;
 
     // callbacks (assigned by the UI)
     this.onSentenceChange = null; // (chapterIndex, sentenceIndex, sentenceText)
     this.onChapterChange = null;  // (chapterIndex)
-    this.onStateChange = null;    // ('playing'|'paused'|'stopped'|'ended')
+    this.onStateChange = null;    // ('playing'|'paused'|'stopped'|'ended'|'error')
     this.onWord = null;           // (charIndex, charLength) within sentence
     this.onEnd = null;            // finished whole book
+    this.onError = null;          // speech synthesis is failing
 
     this._startWatchdog();
   }
@@ -78,7 +98,9 @@ export class Reader {
   _loadChapter(i) {
     this.chapterIndex = Math.max(0, Math.min(i, this.chapters.length - 1));
     const ch = this.chapters[this.chapterIndex];
-    this.sentences = splitSentences(ch ? ch.text : '');
+    // A chapter may carry a pre-computed sentence array (used by the
+    // "Original document" view so highlight indices line up exactly).
+    this.sentences = ch && ch.sentences ? ch.sentences : splitSentences(ch ? ch.text : '');
     if (this.onChapterChange) this.onChapterChange(this.chapterIndex);
   }
 
@@ -109,6 +131,7 @@ export class Reader {
   play() {
     if (!this.chapters.length) return;
     if (this.paused) { this.paused = false; }
+    this._errorStreak = 0;
     this.playing = true;
     this._emit('playing');
     this._speakCurrent();
@@ -205,19 +228,27 @@ export class Reader {
 
     u.onboundary = (e) => {
       if (token !== this._token) return;
+      this._errorStreak = 0; // real progress
       if (this.onWord && e.name !== 'sentence') {
         this.onWord(e.charIndex, e.charLength || 0);
       }
     };
     u.onend = () => {
       if (token !== this._token) return;
+      this._errorStreak = 0;
       this._lastActivity = now();
       this._advance(token);
     };
     u.onerror = (e) => {
       if (token !== this._token) return;
-      if (e.error === 'canceled' || e.error === 'interrupted') return;
-      this._advance(token); // skip a problematic sentence rather than stall
+      const err = e && e.error;
+      if (err === 'canceled' || err === 'interrupted') return;
+      // Guard against a runaway: if synthesis keeps failing (e.g. the chosen
+      // voice can't speak), don't silently blast through the whole document —
+      // stop and let the UI surface it.
+      this._errorStreak = (this._errorStreak || 0) + 1;
+      if (this._errorStreak >= 4) { this._fail(); return; }
+      this._advance(token); // otherwise skip this one problematic sentence
     };
 
     this._lastActivity = now();
@@ -248,6 +279,15 @@ export class Reader {
     synth.cancel();
     this._emit('ended');
     if (this.onEnd) this.onEnd();
+  }
+
+  _fail() {
+    this.playing = false;
+    this.paused = false;
+    this._token++;
+    synth.cancel();
+    this._emit('error');
+    if (this.onError) this.onError();
   }
 
   _emit(state) {
