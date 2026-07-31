@@ -285,31 +285,55 @@ function closeSettings() {
   setTimeout(() => { $('#sheet-settings').hidden = true; }, 250);
 }
 
+// Score a voice by how natural it's likely to sound. The device's premium /
+// enhanced / Siri neural voices are the human-sounding ones; the default
+// "compact" voices are the robotic fallback.
+function voiceScore(v) {
+  const n = (v.name || '').toLowerCase();
+  let s = 0;
+  if (/premium|neural/.test(n)) s += 45;
+  else if (/enhanced/.test(n)) s += 35;
+  if (/siri/.test(n)) s += 40;
+  if (v.localService) s += 5; // on-device (works offline)
+  if ((v.lang || '').toLowerCase().startsWith('en')) s += 12;
+  return s;
+}
+function isNatural(v) {
+  return /premium|enhanced|neural|siri/i.test(v.name || '');
+}
+function rankedVoices() {
+  return [...voices].sort((a, b) => voiceScore(b) - voiceScore(a) || a.name.localeCompare(b.name));
+}
+function bestVoice() {
+  const ranked = rankedVoices();
+  return ranked.find((v) => (v.lang || '').startsWith('en')) || ranked[0] || null;
+}
+
 function populateVoiceSelect() {
   const sel = $('#sel-voice');
   const savedURI = localStorage.getItem('voiceURI');
   sel.innerHTML = '';
-  // English voices first, then the rest.
-  const sorted = [...voices].sort((a, b) => {
-    const ae = a.lang.startsWith('en'), be = b.lang.startsWith('en');
-    if (ae !== be) return ae ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-  for (const v of sorted) {
+  let anyNatural = false;
+  for (const v of rankedVoices()) {
     const o = document.createElement('option');
     o.value = v.voiceURI;
-    o.textContent = `${v.name} (${v.lang})`;
+    const star = isNatural(v) ? ' ⭐ recommended' : '';
+    if (isNatural(v)) anyNatural = true;
+    o.textContent = `${v.name} (${v.lang})${star}`;
     if (v.voiceURI === savedURI) o.selected = true;
     sel.appendChild(o);
   }
+  // Nudge the user toward downloading a better voice if none are installed.
+  const hint = $('#voice-hint');
+  if (hint) hint.hidden = anyNatural;
 }
 
 function applyVoiceSettings() {
   const savedURI = localStorage.getItem('voiceURI');
   const rate = parseFloat(localStorage.getItem('rate') || '1');
   const pitch = parseFloat(localStorage.getItem('pitch') || '1');
-  const v = voices.find((x) => x.voiceURI === savedURI) ||
-    voices.find((x) => x.default) || voices.find((x) => x.lang.startsWith('en')) || voices[0];
+  // Prefer the saved voice; otherwise auto-pick the most natural one available.
+  const v = voices.find((x) => x.voiceURI === savedURI) || bestVoice();
   if (v) reader.voice = v;
   reader.rate = rate;
   reader.pitch = pitch;
