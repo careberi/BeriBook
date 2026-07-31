@@ -28,6 +28,9 @@ per-word fees, and it works offline once installed.
 - 📲 **Installs to your home screen** as a full-screen app (PWA) and works
   **offline**
 - 🌗 Light / dark themes
+- ✨ **AI assistant (optional)** — summarize a chapter, pull out key points, or
+  ask questions about the document, powered by Claude. Answers can be read aloud
+  too. Uses **your own** Claude API key, stored only on your device.
 
 ---
 
@@ -58,6 +61,36 @@ offline features to work. The easiest free way is **GitHub Pages**:
 - Tap **Choose file**, pick a PDF or `.docx`.
 - It's split into chapters — press **►** to start listening.
 - Open **Settings (⚙︎)** to change voice, speed, and theme.
+- Tap a chapter (**☰**) to jump; tap any sentence to start reading from there.
+
+---
+
+## Using the AI assistant (optional)
+
+The **✨** button in the reader opens the AI assistant: **Summarize this
+chapter**, **Key points**, or **ask a question** about the document. You can
+also have the AI's answer **read aloud**.
+
+This feature uses **your own Claude API key** — nothing is billed to BeriBook,
+and your document and key are sent **directly from your device to Claude**,
+never through any other server.
+
+**One-time setup:**
+1. Go to **console.anthropic.com**, sign in, and add a small amount of billing
+   credit (a few dollars covers a lot of summaries).
+2. Create an **API key** (it looks like `sk-ant-…`) and copy it.
+3. In BeriBook, open **Settings (⚙︎)** — or tap **✨ → Open Settings** — and
+   paste the key into **Claude API key**. Pick a model if you like:
+   - **Claude Opus** — highest quality (default)
+   - **Claude Sonnet** — faster and cheaper
+   - **Claude Haiku** — fastest and cheapest
+
+That's it. Now the **✨** button's tools will work. If you ever want BeriBook to
+be completely offline again, just delete the key from Settings — the reader
+keeps working without it.
+
+> Your key is stored only in this browser/app on this device. Treat it like a
+> password. You can set a monthly spending limit on it in the Anthropic console.
 
 > **Tip (iPhone/iPad):** for the best voices, go to
 > *Settings → Accessibility → Spoken Content → Voices* and download a premium
@@ -86,6 +119,7 @@ python3 -m http.server 8080
 | `css/styles.css` | Mobile-first styling, light/dark themes, safe-area insets |
 | `js/ingest.js` | PDF/DOCX parsing + chapter detection |
 | `js/tts.js` | Speech engine (sentence chunking, transport, highlighting) |
+| `js/ai.js` | Optional Claude integration (summaries, key points, Q&A) — streams from the browser with your own key |
 | `js/db.js` | IndexedDB library + progress + settings |
 | `js/app.js` | UI controller wiring it all together |
 | `sw.js` | Service worker — offline caching of the app shell |

@@ -276,6 +276,34 @@ mark.word {
 }
 .install-hint b { color: var(--text); }
 #btn-test-voice { margin-bottom: 18px; }
+.settings-sub { margin: 22px 0 12px; font-size: 15px; color: var(--brand); }
+.field input[type="password"], .field input[type="text"] {
+  padding: 12px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 16px; width: 100%;
+}
+
+/* ---------- AI panel ---------- */
+.ai-context { color: var(--text-dim); font-size: 14px; margin: 0 0 16px; }
+.ai-tools { display: flex; flex-direction: column; gap: 14px; }
+.ai-actions { display: flex; gap: 10px; }
+.ai-actions .btn-secondary { flex: 1; }
+.ai-ask { display: flex; gap: 8px; }
+.ai-ask input {
+  flex: 1; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text); font-size: 16px; min-width: 0;
+}
+.ai-ask-btn { width: auto; flex: none; padding: 12px 20px; }
+.ai-scope { display: flex; gap: 18px; font-size: 14px; color: var(--text-dim); }
+.ai-scope label { display: flex; align-items: center; gap: 6px; }
+.ai-output-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; min-height: 34px; }
+.ai-status { font-size: 13px; color: var(--text-dim); }
+.ai-output {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; font-size: 16px; line-height: 1.6; white-space: pre-wrap;
+  max-height: 40vh; overflow-y: auto; min-height: 40px;
+}
+#sheet-ai .btn-primary { margin-top: 20px; }
+button:disabled { opacity: .5; }
 
 /* ---------- overlays ---------- */
 .scrim { position: fixed; inset: 0; background: rgba(10,8,25,.5); z-index: 50; }

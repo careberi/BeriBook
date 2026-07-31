@@ -59,6 +59,7 @@
         <div id="reader-title" class="reader-title">Title</div>
         <div id="reader-sub" class="reader-sub">Chapter</div>
       </div>
+      <button id="btn-ai" class="icon-btn" aria-label="AI assistant" title="AI assistant">✨</button>
       <button id="btn-chapters" class="icon-btn" aria-label="Chapters" title="Chapters">☰</button>
     </header>
 
@@ -91,6 +92,46 @@
         <span id="player-status" class="player-status"></span>
       </div>
     </footer>
+  </section>
+
+  <!-- ============ AI SHEET ============ -->
+  <div id="ai-scrim" class="scrim" hidden></div>
+  <section id="sheet-ai" class="sheet" hidden>
+    <div class="sheet-handle"></div>
+    <h2>✨ AI assistant</h2>
+    <p id="ai-context" class="ai-context">Chapter</p>
+
+    <div id="ai-nokey" class="install-hint" hidden>
+      To use AI features, add your <b>Claude API key</b> in Settings. Everything
+      runs from your device — your documents and key go straight to Claude, never
+      through any other server.
+      <button id="ai-open-settings" class="btn-secondary" style="margin-top:12px">Open Settings</button>
+    </div>
+
+    <div id="ai-tools" class="ai-tools">
+      <div class="ai-actions">
+        <button id="ai-summary" class="btn-secondary">Summarize this chapter</button>
+        <button id="ai-points" class="btn-secondary">Key points</button>
+      </div>
+      <div class="ai-ask">
+        <input id="ai-question" type="text" placeholder="Ask a question about this document…" />
+        <button id="ai-ask" class="btn-primary ai-ask-btn">Ask</button>
+      </div>
+      <div class="ai-scope">
+        <label><input type="radio" name="ai-scope" value="chapter" checked /> This chapter</label>
+        <label><input type="radio" name="ai-scope" value="book" /> Whole document</label>
+      </div>
+
+      <div id="ai-output-wrap" hidden>
+        <div class="ai-output-head">
+          <span id="ai-status" class="ai-status"></span>
+          <button id="ai-speak" class="chip" hidden>🔊 Read aloud</button>
+        </div>
+        <div id="ai-output" class="ai-output"></div>
+      </div>
+    </div>
+
+    <button id="btn-close-ai" class="btn-primary">Done</button>
   </section>
 
   <!-- ============ SETTINGS SHEET ============ -->
@@ -129,6 +170,22 @@
     </label>
 
     <button id="btn-test-voice" class="btn-secondary">Test voice</button>
+
+    <h3 class="settings-sub">AI assistant (optional)</h3>
+    <label class="field">
+      <span>Claude API key</span>
+      <input id="inp-apikey" type="password" placeholder="sk-ant-…" autocomplete="off" />
+    </label>
+    <label class="field">
+      <span>AI model</span>
+      <select id="sel-model"></select>
+    </label>
+    <div class="install-hint">
+      The AI features (summaries, key points, Q&amp;A) use <b>your own</b> Claude API
+      key. Get one at <b>console.anthropic.com</b>. It’s stored only on this device
+      and is sent directly to Claude — never to any BeriBook server. Leave blank to
+      keep BeriBook fully offline.
+    </div>
 
     <div id="install-hint" class="install-hint">
       <b>Install on your iPhone / iPad:</b> tap the Share button in Safari, then

@@ -2,7 +2,7 @@
 // BeriBook launches instantly and works fully offline once installed. Your
 // documents live in IndexedDB and are never part of this cache.
 
-const CACHE = 'beribook-v1';
+const CACHE = 'beribook-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const ASSETS = [
   './js/db.js',
   './js/ingest.js',
   './js/tts.js',
+  './js/ai.js',
   './js/vendor/pdf.min.js',
   './js/vendor/pdf.worker.min.js',
   './js/vendor/mammoth.browser.min.js',

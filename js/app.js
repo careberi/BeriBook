@@ -4,11 +4,13 @@
 import { DB } from './db.js';
 import { ingestFile } from './ingest.js';
 import { Reader, loadVoices } from './tts.js';
+import * as AI from './ai.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 const reader = new Reader();
+const aiReader = new Reader(); // reads AI answers aloud, independent of the book
 let currentBook = null;
 let voices = [];
 let saveTimer = null;
@@ -256,8 +258,23 @@ function closeChapters() {
 }
 
 // ------------------------------------------------------------------ settings
+function populateModelSelect() {
+  const sel = $('#sel-model');
+  if (sel.options.length === 0) {
+    for (const m of AI.MODELS) {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.label;
+      sel.appendChild(o);
+    }
+  }
+  sel.value = AI.getModel();
+  $('#inp-apikey').value = AI.getKey();
+}
+
 function openSettings() {
   populateVoiceSelect();
+  populateModelSelect();
   $('#sheet-settings').hidden = false;
   $('#sheet-scrim').hidden = false;
   requestAnimationFrame(() => $('#sheet-settings').classList.add('open'));
@@ -311,6 +328,104 @@ function applyTheme() {
   document.documentElement.style.setProperty('--highlight', hl);
   $('#inp-highlight').value = hl;
 }
+
+// ------------------------------------------------------------------ AI panel
+let aiAbort = null;
+let aiLastText = '';
+
+function refreshAiKeyState() {
+  const has = AI.hasKey();
+  $('#ai-nokey').hidden = has;
+  $('#ai-tools').hidden = !has;
+}
+
+function openAI() {
+  if (!currentBook) return;
+  aiReader.stop();
+  const ci = reader.chapterIndex;
+  $('#ai-context').textContent = `Chapter ${ci + 1}: ${currentBook.chapters[ci].title}`;
+  refreshAiKeyState();
+  $('#sheet-ai').hidden = false;
+  $('#ai-scrim').hidden = false;
+  requestAnimationFrame(() => $('#sheet-ai').classList.add('open'));
+}
+function closeAI() {
+  if (aiAbort) { aiAbort.abort(); aiAbort = null; }
+  aiReader.stop();
+  $('#sheet-ai').classList.remove('open');
+  $('#ai-scrim').hidden = true;
+  setTimeout(() => { $('#sheet-ai').hidden = true; }, 250);
+}
+
+function aiScope() {
+  const el = document.querySelector('input[name="ai-scope"]:checked');
+  return el ? el.value : 'chapter';
+}
+function chapterText() {
+  return currentBook.chapters[reader.chapterIndex].text;
+}
+function bookText() {
+  return currentBook.chapters.map((c) => `## ${c.title}\n${c.text}`).join('\n\n');
+}
+
+async function runAI(taskFn) {
+  if (aiAbort) aiAbort.abort();
+  aiReader.stop();
+  aiAbort = new AbortController();
+  const out = $('#ai-output');
+  const wrap = $('#ai-output-wrap');
+  wrap.hidden = false;
+  out.textContent = '';
+  aiLastText = '';
+  $('#ai-speak').hidden = true;
+  $('#ai-status').textContent = 'Thinking…';
+  setAiBusy(true);
+
+  const onToken = (t) => {
+    $('#ai-status').textContent = 'Writing…';
+    out.textContent += t;
+    out.scrollTop = out.scrollHeight;
+  };
+  try {
+    aiLastText = await taskFn(onToken, aiAbort.signal);
+    $('#ai-status').textContent = '';
+    if (aiLastText.trim()) $('#ai-speak').hidden = false;
+  } catch (err) {
+    if (err.name === 'AbortError') { $('#ai-status').textContent = ''; return; }
+    out.textContent = '⚠️ ' + (err.message || 'Something went wrong.');
+    $('#ai-status').textContent = '';
+  } finally {
+    setAiBusy(false);
+    aiAbort = null;
+  }
+}
+
+function setAiBusy(busy) {
+  ['#ai-summary', '#ai-points', '#ai-ask', '#ai-question'].forEach((s) => {
+    $(s).disabled = busy;
+  });
+}
+
+function toggleAiSpeak() {
+  if (aiReader.playing && !aiReader.paused) {
+    aiReader.pause();
+    return;
+  }
+  if (aiReader.paused) { aiReader.play(); return; }
+  reader.pause(); // stop book audio
+  aiReader.voice = reader.voice;
+  aiReader.rate = reader.rate;
+  aiReader.pitch = reader.pitch;
+  aiReader.load([{ title: 'AI answer', text: aiLastText }]);
+  aiReader.play();
+}
+
+aiReader.onStateChange = (state) => {
+  const btn = $('#ai-speak');
+  if (!btn) return;
+  const playing = state === 'playing';
+  btn.textContent = playing ? '❚❚ Pause' : (state === 'ended' ? '🔊 Read again' : '🔊 Read aloud');
+};
 
 // ------------------------------------------------------------------ speed cycle
 const SPEEDS = [0.8, 1.0, 1.2, 1.5, 1.75, 2.0];
@@ -381,6 +496,11 @@ function wireEvents() {
     reader.load([{ title: 'Test', text: 'Hello! This is how BeriBook will read your documents to you.' }]);
     reader.play();
   });
+  $('#inp-apikey').addEventListener('change', (e) => {
+    AI.setKey(e.target.value);
+    refreshAiKeyState();
+  });
+  $('#sel-model').addEventListener('change', (e) => AI.setModel(e.target.value));
 
   // reader nav
   $('#btn-back').addEventListener('click', () => {
@@ -393,8 +513,33 @@ function wireEvents() {
   $('#btn-close-chapters').addEventListener('click', closeChapters);
   $('#drawer-scrim').addEventListener('click', closeChapters);
 
+  // AI panel
+  $('#btn-ai').addEventListener('click', openAI);
+  $('#btn-close-ai').addEventListener('click', closeAI);
+  $('#ai-scrim').addEventListener('click', closeAI);
+  $('#ai-open-settings').addEventListener('click', () => { closeAI(); openSettings(); });
+  $('#ai-summary').addEventListener('click', () => {
+    const t = currentBook.chapters[reader.chapterIndex].title;
+    runAI((onTok, sig) => AI.summarizeChapter(t, chapterText(), onTok, sig));
+  });
+  $('#ai-points').addEventListener('click', () => {
+    const t = currentBook.chapters[reader.chapterIndex].title;
+    runAI((onTok, sig) => AI.keyPoints(t, chapterText(), onTok, sig));
+  });
+  const askHandler = () => {
+    const q = $('#ai-question').value.trim();
+    if (!q) return;
+    const ctx = aiScope() === 'book' ? bookText() : chapterText();
+    runAI((onTok, sig) => AI.askQuestion(currentBook.title, ctx, q, onTok, sig));
+  };
+  $('#ai-ask').addEventListener('click', askHandler);
+  $('#ai-question').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); askHandler(); }
+  });
+  $('#ai-speak').addEventListener('click', toggleAiSpeak);
+
   // player
-  $('#btn-play').addEventListener('click', () => reader.toggle());
+  $('#btn-play').addEventListener('click', () => { aiReader.stop(); reader.toggle(); });
   $('#btn-next').addEventListener('click', () => reader.nextSentence());
   $('#btn-prev').addEventListener('click', () => reader.prevSentence());
   $('#btn-next-ch').addEventListener('click', () => reader.nextChapter());
