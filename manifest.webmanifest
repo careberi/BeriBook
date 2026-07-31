@@ -1,0 +1,16 @@
+{
+  "name": "BeriBook — Listen to your documents",
+  "short_name": "BeriBook",
+  "description": "Upload PDFs and Word documents and have them read aloud, automatically split into chapters.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141225",
+  "theme_color": "#5d51e8",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

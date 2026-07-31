@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+  <title>BeriBook — Listen to your documents</title>
+  <meta name="description" content="Upload PDFs and Word documents and have them read aloud, split into chapters." />
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#5d51e8" />
+
+  <!-- iOS home-screen app -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="BeriBook" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <link rel="icon" href="icons/icon-192.png" />
+
+  <link rel="stylesheet" href="css/styles.css" />
+
+  <!-- Document parsers (vendored, work offline) -->
+  <script src="js/vendor/pdf.min.js"></script>
+  <script src="js/vendor/mammoth.browser.min.js"></script>
+</head>
+<body>
+  <!-- ============ LIBRARY ============ -->
+  <section id="view-library" class="view is-active">
+    <header class="topbar">
+      <div class="brand">
+        <img src="icons/icon-192.png" alt="" class="brand-logo" />
+        <span>BeriBook</span>
+      </div>
+      <button id="btn-settings" class="icon-btn" aria-label="Settings" title="Settings">⚙︎</button>
+    </header>
+
+    <main class="library">
+      <div id="dropzone" class="dropzone">
+        <div class="dropzone-inner">
+          <div class="dz-icon">＋</div>
+          <p class="dz-title">Add a document</p>
+          <p class="dz-sub">Tap to choose a PDF or Word file, or drag one here.<br />It’s split into chapters and read aloud.</p>
+          <button id="btn-add" class="btn-primary">Choose file</button>
+          <input id="file-input" type="file" accept=".pdf,.docx,application/pdf" hidden />
+        </div>
+      </div>
+
+      <h2 class="section-title">Your library</h2>
+      <ul id="book-list" class="book-list"></ul>
+      <p id="empty-library" class="empty">Nothing here yet. Add your first document above.</p>
+    </main>
+  </section>
+
+  <!-- ============ READER ============ -->
+  <section id="view-reader" class="view">
+    <header class="topbar reader-topbar">
+      <button id="btn-back" class="icon-btn" aria-label="Back to library">‹</button>
+      <div class="reader-title-wrap">
+        <div id="reader-title" class="reader-title">Title</div>
+        <div id="reader-sub" class="reader-sub">Chapter</div>
+      </div>
+      <button id="btn-chapters" class="icon-btn" aria-label="Chapters" title="Chapters">☰</button>
+    </header>
+
+    <main id="reader-body" class="reader-body">
+      <article id="reading-area" class="reading-area" aria-live="off"></article>
+    </main>
+
+    <!-- Chapter drawer -->
+    <aside id="chapter-drawer" class="drawer" hidden>
+      <div class="drawer-head">
+        <span>Chapters</span>
+        <button id="btn-close-chapters" class="icon-btn" aria-label="Close">✕</button>
+      </div>
+      <ol id="chapter-list" class="chapter-list"></ol>
+    </aside>
+    <div id="drawer-scrim" class="scrim" hidden></div>
+
+    <!-- Playback bar -->
+    <footer class="player">
+      <input id="scrubber" class="scrubber" type="range" min="0" max="100" value="0" step="1" aria-label="Position in chapter" />
+      <div class="player-controls">
+        <button id="btn-prev-ch" class="ctl" aria-label="Previous chapter">⏮</button>
+        <button id="btn-prev" class="ctl" aria-label="Previous sentence">⟲</button>
+        <button id="btn-play" class="ctl ctl-main" aria-label="Play">►</button>
+        <button id="btn-next" class="ctl" aria-label="Next sentence">⟳</button>
+        <button id="btn-next-ch" class="ctl" aria-label="Next chapter">⏭</button>
+      </div>
+      <div class="player-meta">
+        <button id="btn-speed" class="chip" aria-label="Playback speed">1.0×</button>
+        <span id="player-status" class="player-status"></span>
+      </div>
+    </footer>
+  </section>
+
+  <!-- ============ SETTINGS SHEET ============ -->
+  <div id="sheet-scrim" class="scrim" hidden></div>
+  <section id="sheet-settings" class="sheet" hidden>
+    <div class="sheet-handle"></div>
+    <h2>Settings</h2>
+
+    <label class="field">
+      <span>Voice</span>
+      <select id="sel-voice"></select>
+    </label>
+
+    <label class="field">
+      <span>Speed <b id="rate-val">1.0×</b></span>
+      <input id="rng-rate" type="range" min="0.5" max="2" step="0.1" value="1" />
+    </label>
+
+    <label class="field">
+      <span>Pitch <b id="pitch-val">1.0</b></span>
+      <input id="rng-pitch" type="range" min="0.5" max="1.5" step="0.1" value="1" />
+    </label>
+
+    <label class="field">
+      <span>Theme</span>
+      <select id="sel-theme">
+        <option value="system">Match device</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
+
+    <label class="field row">
+      <span>Highlight color</span>
+      <input id="inp-highlight" type="color" value="#ffe08a" />
+    </label>
+
+    <button id="btn-test-voice" class="btn-secondary">Test voice</button>
+
+    <div id="install-hint" class="install-hint">
+      <b>Install on your iPhone / iPad:</b> tap the Share button in Safari, then
+      <b>“Add to Home Screen.”</b> BeriBook then opens full-screen like a real app.
+    </div>
+
+    <button id="btn-close-settings" class="btn-primary">Done</button>
+  </section>
+
+  <!-- ============ IMPORT OVERLAY ============ -->
+  <div id="import-overlay" class="overlay" hidden>
+    <div class="overlay-card">
+      <div class="spinner"></div>
+      <p id="import-msg">Reading your document…</p>
+      <div class="progress"><div id="import-bar" class="progress-bar"></div></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
